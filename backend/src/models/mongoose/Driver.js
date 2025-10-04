@@ -8,7 +8,6 @@ const DriverSchema = new mongoose.Schema(
     name: { type: String, required: true },
     phone: { type: String, required: true, unique: true, index: true },
     busNumber: { type: String, required: true },
-    passwordHash: { type: String, required: true },
     role: { type: String, default: 'driver' },
     isSharingLocation: { type: Boolean, default: false },
     // Array of route stops marked by the driver

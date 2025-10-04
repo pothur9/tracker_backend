@@ -10,7 +10,6 @@ try {
   MDriver = require('../models/mongoose/Driver');
   MOtp = require('../models/mongoose/Otp');
 } catch {}
-const { hashPassword, comparePassword } = require('../utils/crypto');
 const { signToken } = require('../utils/token');
 
 // Fake SMS sender (logs to console). Replace with real provider later.
@@ -68,22 +67,17 @@ async function verifyUserOtp(req, res) {
 
 async function userSignup(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section, password, fcmToken } = req.body;
+  const { city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section, fcmToken } = req.body;
   if (process.env.MONGODB_URI && MUser && MOtp) {
-    const otp = await MOtp.findOne({ phone });
-    if (!otp || !otp.verified) return res.status(400).json({ error: 'Phone not OTP verified' });
     const existing = await MUser.findOne({ phone });
     if (existing) return res.status(400).json({ error: 'User already exists' });
-    const passwordHash = await hashPassword(password);
-    const doc = await MUser.create({ city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section, passwordHash, role: 'user', fcmToken });
+    const doc = await MUser.create({ city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section, role: 'user', fcmToken });
     const token = signToken({ id: doc.id, role: 'user' });
     return res.status(201).json({ token, user: { id: doc.id, city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section } });
   } else {
-    if (!isVerified(phone)) return res.status(400).json({ error: 'Phone not OTP verified' });
     const existing = findUserByPhone(phone);
     if (existing) return res.status(400).json({ error: 'User already exists' });
-    const passwordHash = await hashPassword(password);
-    const user = createUser({ city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section, passwordHash, role: 'user', fcmToken });
+    const user = createUser({ city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section, role: 'user', fcmToken });
     const token = signToken({ id: user.id, role: 'user' });
     return res.status(201).json({ token, user: { id: user.id, city, schoolName, name, fatherName, gender, phone, busNumber, class: className, section } });
   }
@@ -91,12 +85,11 @@ async function userSignup(req, res) {
 
 async function userLogin(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { phone, password, fcmToken } = req.body;
-  if (process.env.MONGODB_URI && MUser) {
+  const { phone, fcmToken } = req.body;
+  if (process.env.MONGODB_URI && MUser && MOtp) {
     let user = await MUser.findOne({ phone });
-    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
-    const ok = await comparePassword(password, user.passwordHash);
-    if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
+    if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
+    
     if (typeof fcmToken === 'string' && fcmToken) {
       user.fcmToken = fcmToken;
       await user.save();
@@ -105,9 +98,7 @@ async function userLogin(req, res) {
     return res.json({ token, user: { id: user.id, city: user.city, schoolName: user.schoolName, name: user.name, fatherName: user.fatherName, gender: user.gender, phone: user.phone, busNumber: user.busNumber, class: user.class, section: user.section } });
   } else {
     const user = findUserByPhone(phone);
-    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
-    const ok = await comparePassword(password, user.passwordHash);
-    if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
+    if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
     // Persist fcmToken in fallback JSON store if provided
     if (typeof fcmToken === 'string' && fcmToken) {
       const { readDb, writeDb } = require('../config/db');
@@ -161,22 +152,17 @@ async function verifyDriverOtp(req, res) {
 
 async function driverSignup(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { schoolName, schoolCity, name, phone, busNumber, password } = req.body;
+  const { schoolName, schoolCity, name, phone, busNumber } = req.body;
   if (process.env.MONGODB_URI && MDriver && MOtp) {
-    const otp = await MOtp.findOne({ phone });
-    if (!otp || !otp.verified) return res.status(400).json({ error: 'Phone not OTP verified' });
     const existing = await MDriver.findOne({ phone });
     if (existing) return res.status(400).json({ error: 'Driver already exists' });
-    const passwordHash = await hashPassword(password);
-    const doc = await MDriver.create({ schoolName, schoolCity, name, phone, busNumber, passwordHash, role: 'driver' });
+    const doc = await MDriver.create({ schoolName, schoolCity, name, phone, busNumber, role: 'driver' });
     const token = signToken({ id: doc.id, role: 'driver' });
     return res.status(201).json({ token, driver: { id: doc.id, schoolName, schoolCity, name, phone, busNumber } });
   } else {
-    if (!isVerified(phone)) return res.status(400).json({ error: 'Phone not OTP verified' });
     const existing = findDriverByPhone(phone);
     if (existing) return res.status(400).json({ error: 'Driver already exists' });
-    const passwordHash = await hashPassword(password);
-    const driver = createDriver({ schoolName, schoolCity, name, phone, busNumber, passwordHash, role: 'driver' });
+    const driver = createDriver({ schoolName, schoolCity, name, phone, busNumber, role: 'driver' });
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.status(201).json({ token, driver: { id: driver.id, schoolName, schoolCity, name, phone, busNumber } });
   }
@@ -184,19 +170,16 @@ async function driverSignup(req, res) {
 
 async function driverLogin(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { phone, password } = req.body;
-  if (process.env.MONGODB_URI && MDriver) {
+  const { phone } = req.body;
+  if (process.env.MONGODB_URI && MDriver && MOtp) {
     const driver = await MDriver.findOne({ phone });
-    if (!driver) return res.status(400).json({ error: 'Invalid credentials' });
-    const ok = await comparePassword(password, driver.passwordHash);
-    if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
+    if (!driver) return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+    
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.json({ token, driver: { id: driver.id, schoolName: driver.schoolName, schoolCity: driver.schoolCity, name: driver.name, phone: driver.phone, busNumber: driver.busNumber } });
   } else {
     const driver = findDriverByPhone(phone);
-    if (!driver) return res.status(400).json({ error: 'Invalid credentials' });
-    const ok = await comparePassword(password, driver.passwordHash);
-    if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
+    if (!driver) return res.status(400).json({ error: 'Driver not found. Please signup first.' });
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.json({ token, driver: { id: driver.id, schoolName: driver.schoolName, schoolCity: driver.schoolCity, name: driver.name, phone: driver.phone, busNumber: driver.busNumber } });
   }

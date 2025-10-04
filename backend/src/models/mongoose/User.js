@@ -12,7 +12,6 @@ const UserSchema = new mongoose.Schema(
     busNumber: { type: String, required: true },
     class: { type: String, required: true },
     section: { type: String, required: true },
-    passwordHash: { type: String, required: true },
     role: { type: String, default: 'user' },
     // FCM token for push notifications
     fcmToken: { type: String },

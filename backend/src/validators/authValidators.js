@@ -1,7 +1,6 @@
 const { body } = require('express-validator');
 
 const phoneRule = body('phone').isString().trim().isLength({ min: 8 }).withMessage('phone required');
-const passwordRule = body('password').isString().isLength({ min: 6 }).withMessage('password length >= 6');
 
 // User signup validators
 const userSignupValidator = [
@@ -14,10 +13,9 @@ const userSignupValidator = [
   body('busNumber').isString().notEmpty(),
   body('class').isString().notEmpty(),
   body('section').isString().notEmpty(),
-  passwordRule,
 ];
 
-const userLoginValidator = [phoneRule, passwordRule];
+const userLoginValidator = [phoneRule];
 
 // Driver signup validators
 const driverSignupValidator = [
@@ -26,10 +24,9 @@ const driverSignupValidator = [
   body('name').isString().notEmpty(),
   phoneRule,
   body('busNumber').isString().notEmpty(),
-  passwordRule,
 ];
 
-const driverLoginValidator = [phoneRule, passwordRule];
+const driverLoginValidator = [phoneRule];
 
 const otpRequestValidator = [phoneRule];
 const otpVerifyValidator = [phoneRule, body('code').isString().isLength({ min: 4 })];
