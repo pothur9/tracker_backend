@@ -8,7 +8,7 @@ const router = express.Router();
 router.post('/signup', schoolSignupValidator, schoolSignup);
 router.post('/login', schoolLoginValidator, schoolLogin);
 
-// List all schools for selection
+
 router.get('/', listSchools);
 
 // Public: List all schools with totals of drivers and students
