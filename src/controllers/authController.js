@@ -91,8 +91,7 @@ async function userLogin(req, res) {
     if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
     
     if (typeof fcmToken === 'string' && fcmToken) {
-      user.fcmToken = fcmToken;
-      await user.save();
+      await MUser.findByIdAndUpdate(user.id, { $addToSet: { fcmTokens: fcmToken } })
     }
     const token = signToken({ id: user.id, role: 'user' });
     return res.json({ token, user: { id: user.id, city: user.city, schoolName: user.schoolName, name: user.name, fatherName: user.fatherName, gender: user.gender, phone: user.phone, busNumber: user.busNumber, class: user.class, section: user.section } });
@@ -223,14 +222,19 @@ async function getMe(req, res) {
   return res.status(400).json({ error: 'Unknown role' });
 }
 
-// Update current user's FCM token
+// Update current user's FCM token (adds to array for multi-device support)
 async function setFcmToken(req, res) {
   try {
     const { id, role } = req.user
     const { fcmToken } = req.body
     if (typeof fcmToken !== 'string' || !fcmToken) return res.status(400).json({ error: 'fcmToken required' })
     if (process.env.MONGODB_URI && MUser && role === 'user') {
-      const user = await MUser.findByIdAndUpdate(id, { $set: { fcmToken } }, { new: true }).lean()
+      // Add token to array (prevents duplicates with $addToSet)
+      const user = await MUser.findByIdAndUpdate(
+        id,
+        { $addToSet: { fcmTokens: fcmToken } },
+        { new: true }
+      ).lean()
       if (!user) return res.status(404).json({ error: 'User not found' })
       return res.json({ ok: true })
     }

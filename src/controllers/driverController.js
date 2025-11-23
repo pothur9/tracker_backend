@@ -4,7 +4,12 @@ let MUser
 try {
   MUser = require('../models/mongoose/User')
 } catch {}
+let MTripHistory
+try {
+  MTripHistory = require('../models/mongoose/TripHistory')
+} catch {}
 const { sendToTokens } = require('../services/push')
+const dayjs = require('dayjs')
 
 async function getSharingStatus(req, res) {
   try {
@@ -30,36 +35,69 @@ async function setSharingStatus(req, res) {
     await before.save()
     const driver = before.toObject()
 
+    // Handle trip history: create new trip when sharing starts, complete trip when sharing stops
+    if (MTripHistory) {
+      if (!wasSharing && isSharing) {
+        // Starting a new trip - create trip record
+        const newTrip = new MTripHistory({
+          driverId: id,
+          busNumber: driver.busNumber,
+          startTime: new Date(),
+          status: 'active',
+          locations: [],
+        })
+        await newTrip.save()
+        console.log(`[TripHistory] Created new active trip for driver ${id}, bus ${driver.busNumber}`)
+      } else if (wasSharing && !isSharing) {
+        // Ending trip - mark as completed
+        const activeTrip = await MTripHistory.findOne({
+          driverId: id,
+          status: 'active',
+        }).sort({ startTime: -1 })
+        
+        if (activeTrip) {
+          activeTrip.status = 'completed'
+          activeTrip.endTime = new Date()
+          // Set end location if we have locations
+          if (activeTrip.locations && activeTrip.locations.length > 0) {
+            const lastLocation = activeTrip.locations[activeTrip.locations.length - 1]
+            activeTrip.endLocation = {
+              lat: lastLocation.lat,
+              lng: lastLocation.lng,
+            }
+          }
+          await activeTrip.save()
+          console.log(`[TripHistory] Completed trip ${activeTrip._id} for driver ${id}`)
+        }
+      }
+    }
+
     // If transitioning from OFF -> ON, send a "bus started" message to students at first stop
     if (!wasSharing && isSharing && MUser) {
       try {
         const query = {
           busNumber: driver.busNumber,
-          fcmToken: { $exists: true, $ne: null },
+          fcmTokens: { $exists: true, $ne: [] },
           role: 'user',
-          stopIndex: 0,
         }
-        if (driver.schoolId) {
-          query.schoolId = driver.schoolId
-        } else if (driver.schoolName) {
-          query.schoolName = driver.schoolName
-        }
-        const students = await MUser.find(query, 'fcmToken').lean()
-        const tokens = (students || []).map(s => s.fcmToken).filter(Boolean)
-        console.log('[push] bus_started (setSharingStatus): tokens found =', tokens.length)
+        const students = await MUser.find(query, 'fcmTokens').lean()
+        const tokens = students.flatMap(s => s.fcmTokens || []).filter(Boolean)
+        console.log('[push] driver_on_the_way (setSharingStatus): tokens found =', tokens.length)
         if (tokens.length) {
           const result = await sendToTokens({
-            title: `Bus ${driver.busNumber} has started`,
-            body: `Your bus has started from the first stop.`,
+            title: `Driver is on the way`,
+            body: `Bus ${driver.busNumber} has started the trip.`,
             data: {
               busNumber: driver.busNumber,
               schoolId: String(driver.schoolId || ''),
-              event: 'bus_started',
-              startStopIndex: '0',
+              event: 'driver_on_the_way',
             },
             tokens,
           })
-          console.log('[push] bus_started (setSharingStatus): success sent =', result?.success)
+          console.log('[push] driver_on_the_way (setSharingStatus): success sent =', result?.success, 'failure =', result?.failure)
+          if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length && MUser) {
+            try { await MUser.updateMany({}, { $pull: { fcmTokens: { $in: result.invalidTokens } } }) } catch {}
+          }
         }
       } catch (e) {
         // non-fatal
@@ -126,7 +164,7 @@ async function arriveAtStop(req, res) {
       try {
         const query = {
           busNumber: driver.busNumber,
-          fcmToken: { $exists: true, $ne: null },
+          fcmTokens: { $exists: true, $ne: [] },
           role: 'user',
         }
         if (driver.schoolId) {
@@ -134,10 +172,10 @@ async function arriveAtStop(req, res) {
         } else if (driver.schoolName) {
           query.schoolName = driver.schoolName
         }
-        const students = await MUser.find(query, 'fcmToken').lean()
-        const tokens = (students || []).map(s => s.fcmToken).filter(Boolean)
+        const students = await MUser.find(query, 'fcmTokens').lean()
+        const tokens = students.flatMap(s => s.fcmTokens || []).filter(Boolean)
         if (tokens.length) {
-          await sendToTokens({
+          const result = await sendToTokens({
             title: `Bus ${driver.busNumber} has started`,
             body: `Your bus has started from the first stop.`,
             data: {
@@ -148,6 +186,9 @@ async function arriveAtStop(req, res) {
             },
             tokens,
           })
+          if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length && MUser) {
+            try { await MUser.updateMany({}, { $pull: { fcmTokens: { $in: result.invalidTokens } } }) } catch {}
+          }
         }
       } catch (e) {
         // Non-fatal: continue
@@ -160,9 +201,9 @@ async function arriveAtStop(req, res) {
       const users = await MUser.find({
         busNumber: driver.busNumber,
         stopIndex: { $in: targetIndexes },
-        fcmToken: { $exists: true, $ne: null },
-      }, 'fcmToken stopIndex name').lean()
-      const tokens = users.map(u => u.fcmToken).filter(Boolean)
+        fcmTokens: { $exists: true, $ne: [] },
+      }, 'fcmTokens stopIndex name').lean()
+      const tokens = users.flatMap(u => u.fcmTokens || []).filter(Boolean)
       console.log('[push] on_the_way (arriveAtStop): tokens found =', tokens.length)
       if (tokens.length) {
         const stop = stops[stopIndex]
@@ -176,6 +217,9 @@ async function arriveAtStop(req, res) {
           tokens,
         })
         console.log('[push] on_the_way (arriveAtStop): success sent =', result?.success)
+        if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length && MUser) {
+          try { await MUser.updateMany({}, { $pull: { fcmTokens: { $in: result.invalidTokens } } }) } catch {}
+        }
       }
     }
 
@@ -194,7 +238,6 @@ async function listStopsByBusNumber(req, res) {
     }
     const driver = await Driver.findOne({ busNumber }).lean()
     if (!driver) return res.status(404).json({ error: 'Driver not found' })
-    // Only expose when driver is sharing
     if (!driver.isSharingLocation) return res.status(403).json({ error: 'Driver is offline' })
     const stops = (driver.stops || []).slice().sort((a, b) => a.order - b.order)
     return res.json({ stops, currentStopIndex: driver.currentStopIndex ?? -1 })
@@ -203,9 +246,44 @@ async function listStopsByBusNumber(req, res) {
   }
 }
 
+async function notifyUsersNow(req, res) {
+try {
+  const { id } = req.user
+  const driver = await Driver.findById(id).lean()
+  if (!driver) return res.status(404).json({ error: 'Driver not found' })
+  if (!MUser) return res.status(400).json({ error: 'Push unavailable' })
+  const query = {
+    busNumber: driver.busNumber,
+    fcmTokens: { $exists: true, $ne: [] },
+    role: 'user',
+  }
+  const students = await MUser.find(query, 'fcmTokens').lean()
+  const tokens = students.flatMap(s => s.fcmTokens || []).filter(Boolean)
+  if (tokens.length) {
+    const result = await sendToTokens({
+      title: `Driver is on the way`,
+      body: `Bus ${driver.busNumber} has started the trip.`,
+      data: {
+        busNumber: driver.busNumber,
+        schoolId: String(driver.schoolId || ''),
+        event: 'driver_on_the_way',
+      },
+      tokens,
+    })
+    if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length && MUser) {
+      try { await MUser.updateMany({}, { $pull: { fcmTokens: { $in: result.invalidTokens } } }) } catch {}
+    }
+    return res.json({ ok: true, sent: result?.success || 0, failure: result?.failure || 0 })
+  }
+  return res.json({ ok: true, sent: 0 })
+} catch (e) {
+  return res.status(500).json({ error: 'Failed to notify users' })
+}
+}
+
 module.exports = { getSharingStatus, setSharingStatus }
 module.exports.addStop = addStop
 module.exports.listStops = listStops
 module.exports.arriveAtStop = arriveAtStop
 module.exports.listStopsByBusNumber = listStopsByBusNumber
-
+module.exports.notifyUsersNow = notifyUsersNow

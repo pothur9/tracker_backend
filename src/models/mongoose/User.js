@@ -13,7 +13,9 @@ const UserSchema = new mongoose.Schema(
     class: { type: String, required: true },
     section: { type: String, required: true },
     role: { type: String, default: 'user' },
-    // FCM token for push notifications
+    // FCM tokens for push notifications (multi-device support)
+    fcmTokens: [{ type: String }],
+    // Legacy single token field (kept for backward compatibility)
     fcmToken: { type: String },
     // Index of the stop along the driver's route this user belongs to
     stopIndex: { type: Number, default: 0 },

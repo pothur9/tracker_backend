@@ -6,6 +6,8 @@ const schoolRoutes = require('./schoolRoutes');
 const directionsRoutes = require('./directionsRoutes');
 const driverRoutes = require('./driverRoutes');
 const adminRoutes = require('./adminRoutes');
+const tripHistoryRoutes = require('./tripHistoryRoutes');
+const testRoutes = require('./testRoutes');
 
 const router = express.Router();
 
@@ -16,5 +18,7 @@ router.use('/school', schoolRoutes);
 router.use('/directions', directionsRoutes);
 router.use('/driver', driverRoutes);
 router.use('/admin', adminRoutes);
+router.use('/trips', tripHistoryRoutes);
+router.use('/test', testRoutes);
 
 module.exports = router;
