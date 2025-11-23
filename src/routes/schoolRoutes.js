@@ -14,7 +14,7 @@ router.get('/', listSchools);
 // Public: List all schools with totals of drivers and students
 router.get('/stats', listSchoolsWithStats);
 
-// Public: Count students by bus with schoolName only
+
 router.get('/by-name/:schoolName/bus/:busNumber/students/count', countStudentsByBusBySchoolName);
 
 // Public: Bus stats (total buses and students per bus) by schoolName
