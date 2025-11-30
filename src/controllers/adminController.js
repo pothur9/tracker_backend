@@ -17,6 +17,14 @@ let MUser;
 try {
   MUser = require('../models/mongoose/User');
 } catch {}
+let MDriver;
+try {
+  MDriver = require('../models/mongoose/Driver');
+} catch {}
+let MLocation;
+try {
+  MLocation = require('../models/mongoose/Location');
+} catch {}
 
 // Admin login using env credentials
 async function adminLogin(req, res) {
@@ -213,4 +221,98 @@ async function adminCountStudentsByBus(req, res) {
   }
 }
 
-module.exports = { adminLogin, adminCreateSchool, adminListSchools, adminDeleteSchool, adminListSchoolsFull, adminUpdateSchool, adminCountStudentsByBus };
+// Admin: get all driver locations for a particular school
+async function adminGetSchoolDriverLocations(req, res) {
+  const { schoolId } = req.params;
+  if (!schoolId) return res.status(400).json({ error: 'schoolId required' });
+
+  if (process.env.MONGODB_URI && MDriver && MLocation) {
+    try {
+      // Find all drivers for this school
+      const drivers = await MDriver.find({ schoolId }).lean();
+      
+      if (!drivers || drivers.length === 0) {
+        return res.json({ schoolId, drivers: [] });
+      }
+
+      // Get latest location for each driver
+      const driverLocations = await Promise.all(
+        drivers.map(async (driver) => {
+          const location = await MLocation.findOne({ driverId: String(driver._id) })
+            .sort({ updatedAtIso: -1 })
+            .lean();
+
+          return {
+            driverId: String(driver._id),
+            name: driver.name,
+            phone: driver.phone,
+            busNumber: driver.busNumber,
+            isSharingLocation: driver.isSharingLocation,
+            currentStopIndex: driver.currentStopIndex,
+            stops: driver.stops || [],
+            location: location ? {
+              lat: location.lat,
+              lng: location.lng,
+              updatedAt: location.updatedAtIso,
+            } : null,
+          };
+        })
+      );
+
+      // Fetch school location
+      const school = await MSchool.findById(schoolId).lean();
+      const schoolLocation = school && school.location && Array.isArray(school.location.coordinates)
+        ? { lat: school.location.coordinates[1], lng: school.location.coordinates[0] }
+        : null;
+
+      return res.json({
+        schoolId,
+        schoolLocation,
+        drivers: driverLocations,
+      });
+    } catch (error) {
+      console.error('[adminGetSchoolDriverLocations] Error:', error);
+      return res.status(500).json({ error: 'Failed to fetch driver locations' });
+    }
+  } else {
+    // Fallback for non-MongoDB setup
+    const { readDb } = require('../config/db');
+    const db = readDb();
+    const drivers = (db.drivers || []).filter((d) => String(d.schoolId) === String(schoolId));
+    
+    const driverLocations = drivers.map((driver) => {
+      const location = (db.locations || [])
+        .filter((loc) => String(loc.driverId) === String(driver.id))
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+
+      return {
+        driverId: driver.id,
+        name: driver.name,
+        phone: driver.phone,
+        busNumber: driver.busNumber,
+        isSharingLocation: driver.isSharingLocation,
+        currentStopIndex: driver.currentStopIndex,
+        stops: driver.stops || [],
+        location: location ? {
+          lat: location.lat,
+          lng: location.lng,
+          updatedAt: location.updatedAt,
+        } : null,
+      };
+    });
+
+      // Fetch school location from fallback DB
+      const school = (db.schools || []).find(s => String(s.id) === String(schoolId));
+      const schoolLocation = school && school.coordinates
+        ? { lat: school.coordinates.lat, lng: school.coordinates.lng }
+        : null;
+
+      return res.json({
+        schoolId,
+        schoolLocation,
+        drivers: driverLocations,
+      });
+  }
+}
+
+module.exports = { adminLogin, adminCreateSchool, adminListSchools, adminDeleteSchool, adminListSchoolsFull, adminUpdateSchool, adminCountStudentsByBus, adminGetSchoolDriverLocations };

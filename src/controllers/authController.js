@@ -261,6 +261,49 @@ async function setStopIndex(req, res) {
   }
 }
 
+// Check if user exists by phone number
+async function checkUserExists(req, res) {
+  try {
+    const { phone } = req.params
+    if (!phone) return res.status(400).json({ error: 'Phone number required' })
+    
+    let exists = false
+    if (process.env.MONGODB_URI && MUser) {
+      const user = await MUser.findOne({ phone })
+      exists = !!user
+    } else {
+      const user = findUserByPhone(phone)
+      exists = !!user
+    }
+    
+    return res.json({ exists, type: exists ? 'user' : null })
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to check user existence' })
+  }
+}
+
+// Check if driver exists by phone number
+async function checkDriverExists(req, res) {
+  try {
+    const { phone } = req.params
+    if (!phone) return res.status(400).json({ error: 'Phone number required' })
+    
+    let exists = false
+    if (process.env.MONGODB_URI && MDriver) {
+      const driver = await MDriver.findOne({ phone })
+      exists = !!driver
+    } else {
+      const driver = findDriverByPhone(phone)
+      exists = !!driver
+    }
+    
+    return res.json({ exists, type: exists ? 'driver' : null })
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to check driver existence' })
+  }
+}
+
+
 module.exports = {
   requestUserOtp,
   verifyUserOtp,
@@ -273,4 +316,7 @@ module.exports = {
   getMe,
   setFcmToken,
   setStopIndex,
+  checkUserExists,
+  checkDriverExists,
 };
+
