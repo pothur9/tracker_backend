@@ -151,11 +151,16 @@ async function verifyDriverOtp(req, res) {
 
 async function driverSignup(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { schoolName, schoolCity, name, phone, busNumber } = req.body;
+  const { schoolName, schoolCity, name, phone, busNumber, schoolId } = req.body;
   if (process.env.MONGODB_URI && MDriver && MOtp) {
     const existing = await MDriver.findOne({ phone });
     if (existing) return res.status(400).json({ error: 'Driver already exists' });
-    const doc = await MDriver.create({ schoolName, schoolCity, name, phone, busNumber, role: 'driver' });
+    const driverData = { schoolName, schoolCity, name, phone, busNumber, role: 'driver' };
+    // Link to school if schoolId is provided
+    if (schoolId) {
+      driverData.schoolId = schoolId;
+    }
+    const doc = await MDriver.create(driverData);
     const token = signToken({ id: doc.id, role: 'driver' });
     return res.status(201).json({ token, driver: { id: doc.id, schoolName, schoolCity, name, phone, busNumber } });
   } else {
