@@ -151,11 +151,16 @@ async function verifyDriverOtp(req, res) {
 
 async function driverSignup(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { schoolName, schoolCity, name, phone, busNumber } = req.body;
+  const { schoolName, schoolCity, name, phone, busNumber, schoolId } = req.body;
   if (process.env.MONGODB_URI && MDriver && MOtp) {
     const existing = await MDriver.findOne({ phone });
     if (existing) return res.status(400).json({ error: 'Driver already exists' });
-    const doc = await MDriver.create({ schoolName, schoolCity, name, phone, busNumber, role: 'driver' });
+    const driverData = { schoolName, schoolCity, name, phone, busNumber, role: 'driver' };
+    // Link to school if schoolId is provided
+    if (schoolId) {
+      driverData.schoolId = schoolId;
+    }
+    const doc = await MDriver.create(driverData);
     const token = signToken({ id: doc.id, role: 'driver' });
     return res.status(201).json({ token, driver: { id: doc.id, schoolName, schoolCity, name, phone, busNumber } });
   } else {
@@ -261,6 +266,49 @@ async function setStopIndex(req, res) {
   }
 }
 
+// Check if user exists by phone number
+async function checkUserExists(req, res) {
+  try {
+    const { phone } = req.params
+    if (!phone) return res.status(400).json({ error: 'Phone number required' })
+    
+    let exists = false
+    if (process.env.MONGODB_URI && MUser) {
+      const user = await MUser.findOne({ phone })
+      exists = !!user
+    } else {
+      const user = findUserByPhone(phone)
+      exists = !!user
+    }
+    
+    return res.json({ exists, type: exists ? 'user' : null })
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to check user existence' })
+  }
+}
+
+// Check if driver exists by phone number
+async function checkDriverExists(req, res) {
+  try {
+    const { phone } = req.params
+    if (!phone) return res.status(400).json({ error: 'Phone number required' })
+    
+    let exists = false
+    if (process.env.MONGODB_URI && MDriver) {
+      const driver = await MDriver.findOne({ phone })
+      exists = !!driver
+    } else {
+      const driver = findDriverByPhone(phone)
+      exists = !!driver
+    }
+    
+    return res.json({ exists, type: exists ? 'driver' : null })
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to check driver existence' })
+  }
+}
+
+
 module.exports = {
   requestUserOtp,
   verifyUserOtp,
@@ -273,4 +321,7 @@ module.exports = {
   getMe,
   setFcmToken,
   setStopIndex,
+  checkUserExists,
+  checkDriverExists,
 };
+

@@ -1,6 +1,6 @@
 const express = require('express');
 const auth = require('../middleware/auth');
-const { adminLogin, adminCreateSchool, adminListSchools, adminDeleteSchool, adminListSchoolsFull, adminUpdateSchool, adminCountStudentsByBus } = require('../controllers/adminController');
+const { adminLogin, adminCreateSchool, adminListSchools, adminDeleteSchool, adminListSchoolsFull, adminUpdateSchool, adminCountStudentsByBus, adminGetSchoolDriverLocations } = require('../controllers/adminController');
 const { adminLoginValidator, adminCreateSchoolValidator, adminUpdateSchoolValidator } = require('../validators/adminValidators');
 
 const router = express.Router();
@@ -21,5 +21,8 @@ router.patch('/schools/:id', auth('admin'), adminUpdateSchoolValidator, adminUpd
 
 // Admin: count students under a particular bus for a given school (public)
 router.get('/schools/:id/buses/:busNumber/students/count', adminCountStudentsByBus);
+
+// Admin: get all driver locations for a particular school
+router.get('/schools/:schoolId/drivers/locations', auth('admin'), adminGetSchoolDriverLocations);
 
 module.exports = router;

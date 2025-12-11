@@ -4,6 +4,7 @@ const SchoolSchema = new mongoose.Schema(
   {
     schoolName: { type: String, required: true },
     schoolAddress: { type: String, required: true },
+    district: { type: String, required: true },
     location: {
       type: { type: String, enum: ['Point'], default: 'Point' },
       coordinates: { type: [Number], required: true }, // [lng, lat]
