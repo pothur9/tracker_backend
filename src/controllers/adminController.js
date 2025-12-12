@@ -83,13 +83,17 @@ async function adminCreateSchool(req, res) {
 
 // Admin: list all schools
 async function adminListSchools(req, res) {
+  const { district } = req.query; // Support filtering by district
+  
   if (process.env.MONGODB_URI && MSchool) {
-    const docs = await MSchool.find({}, 'schoolName schoolAddress location logoUrl phone').lean();
+    const query = district ? { district } : {};
+    const docs = await MSchool.find(query, 'schoolName schoolAddress district location logoUrl phone').lean();
     return res.json(
       docs.map((d) => ({
         id: String(d._id),
         schoolName: d.schoolName,
         schoolAddress: d.schoolAddress,
+        district: d.district,
         coordinates: d.location && Array.isArray(d.location.coordinates)
           ? { lat: d.location.coordinates[1], lng: d.location.coordinates[0] }
           : undefined,
@@ -99,7 +103,8 @@ async function adminListSchools(req, res) {
     );
   } else {
     const list = listSchoolsModel();
-    return res.json(list.map((s) => ({ id: s.id, schoolName: s.schoolName, schoolAddress: s.schoolAddress, coordinates: s.coordinates, logoUrl: s.logoUrl, phone: s.phone })));
+    const filtered = district ? list.filter(s => s.district === district) : list;
+    return res.json(filtered.map((s) => ({ id: s.id, schoolName: s.schoolName, schoolAddress: s.schoolAddress, district: s.district, coordinates: s.coordinates, logoUrl: s.logoUrl, phone: s.phone })));
   }
 }
 
@@ -153,7 +158,7 @@ async function adminListSchoolsFull(req, res) {
 async function adminUpdateSchool(req, res) {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'id required' });
-  const { schoolName, schoolAddress, coordinates, logoUrl } = req.body || {};
+  const { schoolName, schoolAddress, district, coordinates, logoUrl } = req.body || {};
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')) {
     return res.status(400).json({ error: 'phone cannot be updated' });
   }
@@ -162,6 +167,7 @@ async function adminUpdateSchool(req, res) {
     const update = {};
     if (typeof schoolName === 'string') update.schoolName = schoolName;
     if (typeof schoolAddress === 'string') update.schoolAddress = schoolAddress;
+    if (typeof district === 'string') update.district = district;
     if (logoUrl !== undefined) update.logoUrl = logoUrl;
     if (coordinates && typeof coordinates.lat === 'number' && typeof coordinates.lng === 'number') {
       update.location = { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] };
@@ -172,6 +178,7 @@ async function adminUpdateSchool(req, res) {
       id: String(doc._id),
       schoolName: doc.schoolName,
       schoolAddress: doc.schoolAddress,
+      district: doc.district,
       coordinates: doc.location && Array.isArray(doc.location.coordinates)
         ? { lat: doc.location.coordinates[1], lng: doc.location.coordinates[0] }
         : undefined,
