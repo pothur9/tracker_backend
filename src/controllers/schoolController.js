@@ -536,3 +536,76 @@ async function busStatsBySchoolName(req, res) {
 }
 
 module.exports.busStatsBySchoolName = busStatsBySchoolName;
+
+// Update school information
+async function updateSchool(req, res) {
+  const { schoolId } = req.params;
+  const { schoolName, schoolAddress, district, coordinates, logoUrl, phone } = req.body;
+
+  if (!schoolId) return res.status(400).json({ error: 'schoolId required' });
+
+  if (process.env.MONGODB_URI && MSchool) {
+    try {
+      const updateData = {};
+      if (schoolName) updateData.schoolName = schoolName;
+      if (schoolAddress) updateData.schoolAddress = schoolAddress;
+      if (district) updateData.district = district;
+      if (logoUrl) updateData.logoUrl = logoUrl;
+      if (phone) updateData.phone = phone;
+      if (coordinates && coordinates.lat && coordinates.lng) {
+        updateData.location = {
+          type: 'Point',
+          coordinates: [coordinates.lng, coordinates.lat]
+        };
+      }
+
+      const school = await MSchool.findByIdAndUpdate(
+        schoolId,
+        { $set: updateData },
+        { new: true }
+      );
+
+      if (!school) return res.status(404).json({ error: 'School not found' });
+
+      return res.json({
+        success: true,
+        school: {
+          id: String(school._id),
+          schoolName: school.schoolName,
+          schoolAddress: school.schoolAddress,
+          district: school.district,
+          coordinates: school.location && Array.isArray(school.location.coordinates)
+            ? { lat: school.location.coordinates[1], lng: school.location.coordinates[0] }
+            : undefined,
+          logoUrl: school.logoUrl,
+          phone: school.phone,
+        }
+      });
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to update school', details: e.message });
+    }
+  } else {
+    const { readDb, writeDb } = require('../config/db');
+    const db = readDb();
+    const idx = (db.schools || []).findIndex((s) => String(s.id) === String(schoolId));
+    if (idx === -1) return res.status(404).json({ error: 'School not found' });
+
+    const updateData = {};
+    if (schoolName) updateData.schoolName = schoolName;
+    if (schoolAddress) updateData.schoolAddress = schoolAddress;
+    if (district) updateData.district = district;
+    if (logoUrl) updateData.logoUrl = logoUrl;
+    if (phone) updateData.phone = phone;
+    if (coordinates) updateData.coordinates = coordinates;
+
+    db.schools[idx] = { ...db.schools[idx], ...updateData };
+    writeDb(db);
+
+    return res.json({
+      success: true,
+      school: db.schools[idx]
+    });
+  }
+}
+
+module.exports.updateSchool = updateSchool;

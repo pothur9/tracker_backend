@@ -1,5 +1,5 @@
 const express = require('express');
-const { schoolSignup, schoolLogin, listSchools, listSchoolsWithStats, mapSchoolToUser, mapSchoolToDriver, listDriversBySchool, schoolOverview, schoolOverviewById, countStudentsByBusBySchoolName, busStatsBySchoolName } = require('../controllers/schoolController');
+const { schoolSignup, schoolLogin, listSchools, listSchoolsWithStats, mapSchoolToUser, mapSchoolToDriver, listDriversBySchool, schoolOverview, schoolOverviewById, countStudentsByBusBySchoolName, busStatsBySchoolName, updateSchool } = require('../controllers/schoolController');
 const { schoolSignupValidator, schoolLoginValidator, mapSchoolValidator } = require('../validators/schoolValidators');
 const auth = require('../middleware/auth');
 
@@ -34,5 +34,8 @@ router.get('/overview', auth('school'), schoolOverview);
 
 // Public: school overview by id (no token)
 router.get('/:schoolId/overview', schoolOverviewById);
+
+// Update school information
+router.put('/:schoolId', updateSchool);
 
 module.exports = router;
