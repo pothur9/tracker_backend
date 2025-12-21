@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema(
   {
-    city: { type: String, required: true },
+    city: { type: String, required: false },
     schoolName: { type: String, required: true },
     schoolId: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },
     name: { type: String, required: true },
