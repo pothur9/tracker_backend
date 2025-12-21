@@ -4,7 +4,6 @@ const phoneRule = body('phone').isString().trim().isLength({ min: 8 }).withMessa
 
 // User signup validators
 const userSignupValidator = [
-  body('city').isString().notEmpty(),
   body('schoolName').isString().notEmpty(),
   body('name').isString().notEmpty(),
   body('fatherName').isString().notEmpty(),
