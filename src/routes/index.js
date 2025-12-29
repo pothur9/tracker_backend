@@ -8,6 +8,7 @@ const driverRoutes = require('./driverRoutes');
 const adminRoutes = require('./adminRoutes');
 const tripHistoryRoutes = require('./tripHistoryRoutes');
 const testRoutes = require('./testRoutes');
+const paymentRoutes = require('./paymentRoutes');
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use('/driver', driverRoutes);
 router.use('/admin', adminRoutes);
 router.use('/trips', tripHistoryRoutes);
 router.use('/test', testRoutes);
+router.use('/payment', paymentRoutes);
 
 module.exports = router;

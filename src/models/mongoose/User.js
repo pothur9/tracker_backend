@@ -19,6 +19,9 @@ const UserSchema = new mongoose.Schema(
     fcmToken: { type: String },
     // Index of the stop along the driver's route this user belongs to
     stopIndex: { type: Number, default: 0 },
+    // Subscription status for bus tracking access
+    subscriptionStatus: { type: String, enum: ['none', 'active', 'expired'], default: 'none' },
+    subscriptionEndDate: { type: Date },
   },
   { timestamps: true }
 );
