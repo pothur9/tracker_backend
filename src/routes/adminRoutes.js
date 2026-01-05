@@ -25,6 +25,18 @@ router.get('/schools/:id/buses/:busNumber/students/count', adminCountStudentsByB
 // Admin: get all driver locations for a particular school
 router.get('/schools/:schoolId/drivers/locations', auth('admin'), adminGetSchoolDriverLocations);
 
+// Admin: get route history for all drivers in a school by date
+router.get('/schools/:schoolId/route-history', auth('admin'), async (req, res) => {
+  const { getSchoolRouteHistoryByDate } = require('../controllers/tripHistoryController');
+  return getSchoolRouteHistoryByDate(req, res);
+});
+
+// Admin: get route history for a specific driver by date
+router.get('/drivers/:driverId/route-history', auth('admin'), async (req, res) => {
+  const { getDriverRouteHistoryByDate } = require('../controllers/tripHistoryController');
+  return getDriverRouteHistoryByDate(req, res);
+});
+
 // Public: Update school district (temporary endpoint for data migration)
 router.patch('/schools/:id/district', async (req, res) => {
   const { id } = req.params;

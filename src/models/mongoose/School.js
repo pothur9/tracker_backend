@@ -13,6 +13,7 @@ const SchoolSchema = new mongoose.Schema(
     phone: { type: String, required: true, unique: true, index: true },
     passwordHash: { type: String, required: true },
     role: { type: String, default: 'school' },
+    agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
   },
   { timestamps: true }
 );
