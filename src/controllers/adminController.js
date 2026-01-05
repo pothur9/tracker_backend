@@ -42,7 +42,7 @@ async function adminLogin(req, res) {
 async function adminCreateSchool(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { schoolName, schoolAddress, coordinates, phone, password, logoUrl } = req.body;
+  const { schoolName, schoolAddress, district, coordinates, phone, password, logoUrl, agentId } = req.body;
 
   if (process.env.MONGODB_URI && MSchool) {
     const existing = await MSchool.findOne({ phone });
@@ -51,11 +51,13 @@ async function adminCreateSchool(req, res) {
     const doc = await MSchool.create({
       schoolName,
       schoolAddress,
+      district,
       location: coordinates ? { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] } : undefined,
       logoUrl,
       phone,
       passwordHash,
       role: 'school',
+      agentId: agentId || undefined,
     });
     return res.status(201).json({
       id: String(doc._id),
@@ -64,6 +66,7 @@ async function adminCreateSchool(req, res) {
       coordinates: coordinates || (doc.location ? { lat: doc.location.coordinates[1], lng: doc.location.coordinates[0] } : undefined),
       logoUrl: doc.logoUrl,
       phone: doc.phone,
+      agentId: doc.agentId ? String(doc.agentId) : null,
     });
   } else {
     const existing = findSchoolByPhone(phone);
@@ -87,7 +90,7 @@ async function adminListSchools(req, res) {
   
   if (process.env.MONGODB_URI && MSchool) {
     const query = district ? { district } : {};
-    const docs = await MSchool.find(query, 'schoolName schoolAddress district location logoUrl phone').lean();
+    const docs = await MSchool.find(query, 'schoolName schoolAddress district location logoUrl phone agentId').populate('agentId', 'name phone').lean();
     return res.json(
       docs.map((d) => ({
         id: String(d._id),
@@ -99,6 +102,8 @@ async function adminListSchools(req, res) {
           : undefined,
         logoUrl: d.logoUrl,
         phone: d.phone,
+        agentId: d.agentId ? String(d.agentId._id || d.agentId) : null,
+        agent: d.agentId && d.agentId.name ? { id: String(d.agentId._id), name: d.agentId.name, phone: d.agentId.phone } : null,
       }))
     );
   } else {
@@ -158,7 +163,7 @@ async function adminListSchoolsFull(req, res) {
 async function adminUpdateSchool(req, res) {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'id required' });
-  const { schoolName, schoolAddress, district, coordinates, logoUrl } = req.body || {};
+  const { schoolName, schoolAddress, district, coordinates, logoUrl, agentId } = req.body || {};
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')) {
     return res.status(400).json({ error: 'phone cannot be updated' });
   }
@@ -169,6 +174,7 @@ async function adminUpdateSchool(req, res) {
     if (typeof schoolAddress === 'string') update.schoolAddress = schoolAddress;
     if (typeof district === 'string') update.district = district;
     if (logoUrl !== undefined) update.logoUrl = logoUrl;
+    if (agentId !== undefined) update.agentId = agentId || null;
     if (coordinates && typeof coordinates.lat === 'number' && typeof coordinates.lng === 'number') {
       update.location = { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] };
     }
@@ -184,6 +190,7 @@ async function adminUpdateSchool(req, res) {
         : undefined,
       logoUrl: doc.logoUrl,
       phone: doc.phone,
+      agentId: doc.agentId ? String(doc.agentId) : null,
       updatedAt: doc.updatedAt,
     });
   } else {

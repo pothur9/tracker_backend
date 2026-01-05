@@ -272,6 +272,157 @@ async function getSchoolTripsBySchoolName(req, res) {
   }
 }
 
+// Admin: Get driver route history for a specific date
+async function getDriverRouteHistoryByDate(req, res) {
+  try {
+    if (!MTripHistory || !MDriver) {
+      return res.status(503).json({ error: 'Trip history not available' });
+    }
+
+    const { driverId } = req.params;
+    const { date } = req.query; // Expected format: YYYY-MM-DD
+
+    if (!driverId) {
+      return res.status(400).json({ error: 'driverId is required' });
+    }
+
+    // Get driver info
+    const driver = await MDriver.findById(driverId).lean();
+    if (!driver) {
+      return res.status(404).json({ error: 'Driver not found' });
+    }
+
+    // Build date filter
+    let dateFilter = {};
+    if (date) {
+      // Parse date and create start/end of day
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      dateFilter = {
+        startTime: { $gte: startOfDay, $lte: endOfDay }
+      };
+    }
+
+    // Query trips for this driver on the specified date
+    const trips = await MTripHistory.find({
+      driverId: driverId,
+      ...dateFilter
+    })
+      .sort({ startTime: -1 })
+      .lean();
+
+    // Calculate summary statistics
+    const summary = {
+      totalTrips: trips.length,
+      totalLocations: trips.reduce((sum, trip) => sum + (trip.locations?.length || 0), 0),
+      completedTrips: trips.filter(t => t.status === 'completed').length,
+      activeTrips: trips.filter(t => t.status === 'active').length,
+    };
+
+    return res.json({
+      driver: {
+        _id: driver._id,
+        name: driver.name,
+        phone: driver.phone,
+        busNumber: driver.busNumber,
+        schoolName: driver.schoolName,
+      },
+      date: date || 'all',
+      trips,
+      summary
+    });
+  } catch (e) {
+    console.error('[TripHistory] Error getting driver route history by date:', e);
+    return res.status(500).json({ error: 'Failed to get driver route history' });
+  }
+}
+
+// Admin: Get all drivers route history for a school on a specific date
+async function getSchoolRouteHistoryByDate(req, res) {
+  try {
+    if (!MTripHistory || !MDriver) {
+      return res.status(503).json({ error: 'Trip history not available' });
+    }
+
+    const { schoolId } = req.params;
+    const { date } = req.query; // Expected format: YYYY-MM-DD
+
+    if (!schoolId) {
+      return res.status(400).json({ error: 'schoolId is required' });
+    }
+
+    // Get all drivers for this school
+    const drivers = await MDriver.find({ schoolId }).lean();
+    if (!drivers || drivers.length === 0) {
+      return res.json({ drivers: [], date: date || 'all', trips: [], summary: { totalTrips: 0, totalLocations: 0 } });
+    }
+
+    const driverIds = drivers.map(d => d._id);
+
+    // Build date filter
+    let dateFilter = {};
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      dateFilter = {
+        startTime: { $gte: startOfDay, $lte: endOfDay }
+      };
+    }
+
+    // Query trips for all drivers on the specified date
+    const trips = await MTripHistory.find({
+      driverId: { $in: driverIds },
+      ...dateFilter
+    })
+      .sort({ startTime: -1 })
+      .lean();
+
+    // Group trips by driver
+    const tripsByDriver = {};
+    for (const driver of drivers) {
+      tripsByDriver[driver._id.toString()] = {
+        driver: {
+          _id: driver._id,
+          name: driver.name,
+          phone: driver.phone,
+          busNumber: driver.busNumber,
+        },
+        trips: []
+      };
+    }
+
+    for (const trip of trips) {
+      const dId = trip.driverId.toString();
+      if (tripsByDriver[dId]) {
+        tripsByDriver[dId].trips.push(trip);
+      }
+    }
+
+    // Calculate summary
+    const summary = {
+      totalDrivers: drivers.length,
+      driversWithTrips: Object.values(tripsByDriver).filter(d => d.trips.length > 0).length,
+      totalTrips: trips.length,
+      totalLocations: trips.reduce((sum, trip) => sum + (trip.locations?.length || 0), 0),
+    };
+
+    return res.json({
+      date: date || 'all',
+      drivers: Object.values(tripsByDriver),
+      summary
+    });
+  } catch (e) {
+    console.error('[TripHistory] Error getting school route history by date:', e);
+    return res.status(500).json({ error: 'Failed to get school route history' });
+  }
+}
+
 module.exports = {
   getDriverTrips,
   getTripById,
@@ -279,5 +430,7 @@ module.exports = {
   getTripByIdPublic,
   getDriversPathsBySchoolName,
   getSchoolTripsBySchoolName,
+  getDriverRouteHistoryByDate,
+  getSchoolRouteHistoryByDate,
 };
 
