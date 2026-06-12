@@ -217,6 +217,17 @@ async function driverUpdateLocation(req, res) {
 async function userGetLatestLocation(req, res) {
   const { busNumber } = req.query;
   if (!busNumber) return res.status(400).json({ error: 'busNumber required' });
+
+  if (busNumber === 'DEMO-123') {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+      lat: 28.6304,
+      lng: 77.2177,
+      updatedAt: new Date().toISOString(),
+      busNumber: 'DEMO-123'
+    });
+  }
+
   if (process.env.MONGODB_URI && MLocation) {
     const latest = await MLocation.findOne({ busNumber }).sort({ updatedAtIso: -1 }).lean();
     if (!latest) return res.status(404).json({ error: 'No location yet' });

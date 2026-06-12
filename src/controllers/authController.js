@@ -88,7 +88,24 @@ async function userLogin(req, res) {
   const { phone, fcmToken } = req.body;
   if (process.env.MONGODB_URI && MUser && MOtp) {
     let user = await MUser.findOne({ phone });
-    if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
+    if (!user) {
+      if (phone === '9999999999') {
+        user = await MUser.create({
+          city: 'Demo City',
+          schoolName: 'Demo School',
+          name: 'Demo Student',
+          fatherName: 'Demo Father',
+          gender: 'Male',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          class: '10',
+          section: 'A',
+          role: 'user'
+        });
+      } else {
+        return res.status(400).json({ error: 'User not found. Please signup first.' });
+      }
+    }
     
     if (typeof fcmToken === 'string' && fcmToken) {
       await MUser.findByIdAndUpdate(user.id, { $addToSet: { fcmTokens: fcmToken } })
@@ -96,8 +113,25 @@ async function userLogin(req, res) {
     const token = signToken({ id: user.id, role: 'user' });
     return res.json({ token, user: { id: user.id, city: user.city, schoolName: user.schoolName, name: user.name, fatherName: user.fatherName, gender: user.gender, phone: user.phone, busNumber: user.busNumber, class: user.class, section: user.section } });
   } else {
-    const user = findUserByPhone(phone);
-    if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
+    let user = findUserByPhone(phone);
+    if (!user) {
+      if (phone === '9999999999') {
+        user = createUser({
+          city: 'Demo City',
+          schoolName: 'Demo School',
+          name: 'Demo Student',
+          fatherName: 'Demo Father',
+          gender: 'Male',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          class: '10',
+          section: 'A',
+          role: 'user'
+        });
+      } else {
+        return res.status(400).json({ error: 'User not found. Please signup first.' });
+      }
+    }
     // Persist fcmToken in fallback JSON store if provided
     if (typeof fcmToken === 'string' && fcmToken) {
       const { readDb, writeDb } = require('../config/db');
@@ -176,14 +210,40 @@ async function driverLogin(req, res) {
   const err = handleValidation(req, res); if (err) return;
   const { phone } = req.body;
   if (process.env.MONGODB_URI && MDriver && MOtp) {
-    const driver = await MDriver.findOne({ phone });
-    if (!driver) return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+    let driver = await MDriver.findOne({ phone });
+    if (!driver) {
+      if (phone === '9999999999') {
+        driver = await MDriver.create({
+          schoolName: 'Demo School',
+          schoolCity: 'Demo City',
+          name: 'Demo Driver',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          role: 'driver'
+        });
+      } else {
+        return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+      }
+    }
     
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.json({ token, driver: { id: driver.id, schoolName: driver.schoolName, schoolCity: driver.schoolCity, name: driver.name, phone: driver.phone, busNumber: driver.busNumber } });
   } else {
-    const driver = findDriverByPhone(phone);
-    if (!driver) return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+    let driver = findDriverByPhone(phone);
+    if (!driver) {
+      if (phone === '9999999999') {
+        driver = createDriver({
+          schoolName: 'Demo School',
+          schoolCity: 'Demo City',
+          name: 'Demo Driver',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          role: 'driver'
+        });
+      } else {
+        return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+      }
+    }
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.json({ token, driver: { id: driver.id, schoolName: driver.schoolName, schoolCity: driver.schoolCity, name: driver.name, phone: driver.phone, busNumber: driver.busNumber } });
   }
