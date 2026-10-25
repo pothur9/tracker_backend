@@ -68,6 +68,39 @@ async function setSharingStatus(req, res) {
           }
           await activeTrip.save()
           console.log(`[TripHistory] Completed trip ${activeTrip._id} for driver ${id}`)
+
+          // Send trip-end notification to students on this bus
+          if (MUser) {
+            try {
+              const query = {
+                busNumber: driver.busNumber,
+                fcmTokens: { $exists: true, $ne: [] },
+                role: 'user',
+              }
+              const students = await MUser.find(query, 'fcmTokens').lean()
+              const tokens = students.flatMap(s => s.fcmTokens || []).filter(Boolean)
+              console.log('[push] trip_ended (setSharingStatus): tokens found =', tokens.length)
+              if (tokens.length) {
+                const result = await sendToTokens({
+                  title: `Trip Ended`,
+                  body: `Bus ${driver.busNumber} has completed the trip.`,
+                  data: {
+                    busNumber: driver.busNumber,
+                    schoolId: String(driver.schoolId || ''),
+                    event: 'trip_ended',
+                  },
+                  tokens,
+                })
+                console.log('[push] trip_ended (setSharingStatus): success =', result?.success, 'failure =', result?.failure)
+                if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length && MUser) {
+                  try { await MUser.updateMany({}, { $pull: { fcmTokens: { $in: result.invalidTokens } } }) } catch {}
+                }
+              }
+            } catch (e) {
+              // non-fatal
+              console.error('[push] trip_ended notification error:', e)
+            }
+          }
         }
       }
     }
