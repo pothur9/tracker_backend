@@ -10,6 +10,7 @@ const tripHistoryRoutes = require('./tripHistoryRoutes');
 const testRoutes = require('./testRoutes');
 const paymentRoutes = require('./paymentRoutes');
 const agentRoutes = require('./agentRoutes');
+const whatsappOtpRoutes = require('./whatsappOtpRoutes');
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use('/trips', tripHistoryRoutes);
 router.use('/test', testRoutes);
 router.use('/payment', paymentRoutes);
 router.use('/admin/agents', agentRoutes);
+router.use('/whatsapp-otp', whatsappOtpRoutes);
 
 module.exports = router;
