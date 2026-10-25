@@ -1,0 +1,57 @@
+# Node modules
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Coverage directory (nyc, jest)
+coverage/
+
+# Build outputs
+dist/
+build/
+
+# Temp files
+tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+
+# PM2 logs
+.pids/
+*.pid
+*.seed
+
+# Cache
+.cache/
+npm-cache/
+.eslintcache
+
+# MongoDB dump directories
+dump/
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Debugger
+debug/

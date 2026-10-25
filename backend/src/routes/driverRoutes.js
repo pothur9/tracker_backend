@@ -1,11 +1,12 @@
 const express = require('express')
 const auth = require('../middleware/auth')
-const { getSharingStatus, setSharingStatus, addStop, listStops, arriveAtStop, listStopsByBusNumber } = require('../controllers/driverController')
+const { getSharingStatus, setSharingStatus, addStop, listStops, arriveAtStop, listStopsByBusNumber, notifyUsersNow, getPublicDriverStatus } = require('../controllers/driverController')
 const { body } = require('express-validator')
 const { validationResult } = require('express-validator')
 
 const router = express.Router()
 
+router.get('/status', getPublicDriverStatus)
 router.get('/sharing', auth('driver'), getSharingStatus)
 router.post('/sharing', auth('driver'), setSharingStatus)
 
@@ -46,5 +47,8 @@ router.post(
   validate([body('stopIndex').isInt({ min: 0 })]),
   arriveAtStop
 )
+
+// Manually trigger push notification to users for this driver's bus
+router.post('/notify-now', auth('driver'), notifyUsersNow)
 
 module.exports = router

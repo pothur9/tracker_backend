@@ -21,7 +21,7 @@ function handleValidation(req, res) {
 
 async function schoolSignup(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { schoolName, schoolAddress, coordinates, phone, password, logoUrl } = req.body;
+  const { schoolName, schoolAddress, district, coordinates, phone, password, logoUrl } = req.body;
 
   // coordinates expected as { lat: number, lng: number }
   if (!coordinates || typeof coordinates.lat !== 'number' || typeof coordinates.lng !== 'number') {
@@ -35,6 +35,7 @@ async function schoolSignup(req, res) {
     const doc = await MSchool.create({
       schoolName,
       schoolAddress,
+      district,
       location: { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] },
       logoUrl,
       phone,
@@ -48,6 +49,7 @@ async function schoolSignup(req, res) {
         id: doc.id,
         schoolName: doc.schoolName,
         schoolAddress: doc.schoolAddress,
+        district: doc.district,
         coordinates: { lat: coordinates.lat, lng: coordinates.lng },
         logoUrl: doc.logoUrl,
         phone: doc.phone,
@@ -60,6 +62,7 @@ async function schoolSignup(req, res) {
     const school = createSchool({
       schoolName,
       schoolAddress,
+      district,
       coordinates, // keep as { lat, lng }
       logoUrl,
       phone,
@@ -73,6 +76,7 @@ async function schoolSignup(req, res) {
         id: school.id,
         schoolName: school.schoolName,
         schoolAddress: school.schoolAddress,
+        district: school.district,
         coordinates: school.coordinates,
         logoUrl: school.logoUrl,
         phone: school.phone,
@@ -130,12 +134,13 @@ module.exports = { schoolSignup, schoolLogin };
 
 async function listSchools(req, res) {
   if (process.env.MONGODB_URI && MSchool) {
-    const docs = await MSchool.find({}, 'schoolName schoolAddress location logoUrl').lean();
+    const docs = await MSchool.find({}, 'schoolName schoolAddress district location logoUrl').lean();
     return res.json(
       docs.map((d) => ({
         id: String(d._id),
         schoolName: d.schoolName,
         schoolAddress: d.schoolAddress,
+        district: d.district,
         coordinates: d.location && Array.isArray(d.location.coordinates)
           ? { lat: d.location.coordinates[1], lng: d.location.coordinates[0] }
           : undefined,
@@ -151,6 +156,7 @@ async function listSchools(req, res) {
         id: s.id,
         schoolName: s.schoolName,
         schoolAddress: s.schoolAddress,
+        district: s.district,
         coordinates: s.coordinates,
         logoUrl: s.logoUrl,
       }))
@@ -530,3 +536,76 @@ async function busStatsBySchoolName(req, res) {
 }
 
 module.exports.busStatsBySchoolName = busStatsBySchoolName;
+
+// Update school information
+async function updateSchool(req, res) {
+  const { schoolId } = req.params;
+  const { schoolName, schoolAddress, district, coordinates, logoUrl, phone } = req.body;
+
+  if (!schoolId) return res.status(400).json({ error: 'schoolId required' });
+
+  if (process.env.MONGODB_URI && MSchool) {
+    try {
+      const updateData = {};
+      if (schoolName) updateData.schoolName = schoolName;
+      if (schoolAddress) updateData.schoolAddress = schoolAddress;
+      if (district) updateData.district = district;
+      if (logoUrl) updateData.logoUrl = logoUrl;
+      if (phone) updateData.phone = phone;
+      if (coordinates && coordinates.lat && coordinates.lng) {
+        updateData.location = {
+          type: 'Point',
+          coordinates: [coordinates.lng, coordinates.lat]
+        };
+      }
+
+      const school = await MSchool.findByIdAndUpdate(
+        schoolId,
+        { $set: updateData },
+        { new: true }
+      );
+
+      if (!school) return res.status(404).json({ error: 'School not found' });
+
+      return res.json({
+        success: true,
+        school: {
+          id: String(school._id),
+          schoolName: school.schoolName,
+          schoolAddress: school.schoolAddress,
+          district: school.district,
+          coordinates: school.location && Array.isArray(school.location.coordinates)
+            ? { lat: school.location.coordinates[1], lng: school.location.coordinates[0] }
+            : undefined,
+          logoUrl: school.logoUrl,
+          phone: school.phone,
+        }
+      });
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to update school', details: e.message });
+    }
+  } else {
+    const { readDb, writeDb } = require('../config/db');
+    const db = readDb();
+    const idx = (db.schools || []).findIndex((s) => String(s.id) === String(schoolId));
+    if (idx === -1) return res.status(404).json({ error: 'School not found' });
+
+    const updateData = {};
+    if (schoolName) updateData.schoolName = schoolName;
+    if (schoolAddress) updateData.schoolAddress = schoolAddress;
+    if (district) updateData.district = district;
+    if (logoUrl) updateData.logoUrl = logoUrl;
+    if (phone) updateData.phone = phone;
+    if (coordinates) updateData.coordinates = coordinates;
+
+    db.schools[idx] = { ...db.schools[idx], ...updateData };
+    writeDb(db);
+
+    return res.json({
+      success: true,
+      school: db.schools[idx]
+    });
+  }
+}
+
+module.exports.updateSchool = updateSchool;

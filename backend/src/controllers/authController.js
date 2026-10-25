@@ -12,9 +12,49 @@ try {
 } catch {}
 const { signToken } = require('../utils/token');
 
-// Fake SMS sender (logs to console). Replace with real provider later.
-async function sendOtpSms(phone, code) {
-  console.log(`[OTP] Sending OTP ${code} to ${phone}`);
+// ─── WhatsApp OTP sender via Meta Business API ───────────────────────────────
+const WA_TOKEN = process.env.NEXT_PUBLIC_OTP;
+const WA_PHONE_ID = process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID;
+const WA_API_URL = `https://graph.facebook.com/v25.0/${WA_PHONE_ID}/messages`;
+
+async function sendWhatsAppOtp(phone, code) {
+  // Normalize: 10-digit → 91XXXXXXXXXX
+  const toNumber = String(phone).length === 10 ? `91${phone}` : String(phone);
+  console.log(`[WhatsApp OTP] Sending OTP ${code} to ${toNumber}`);
+
+  if (!WA_TOKEN || !WA_PHONE_ID) {
+    console.warn('[WhatsApp OTP] Missing env vars. OTP will only appear in server logs.');
+    return;
+  }
+
+  try {
+    const payload = {
+      messaging_product: 'whatsapp',
+      to: toNumber,
+      type: 'template',
+      template: {
+        name: 'otp',
+        language: { code: 'en' },
+        components: [
+          { type: 'body', parameters: [{ type: 'text', text: code }] },
+          { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] },
+        ],
+      },
+    };
+    const res = await fetch(WA_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.messages?.[0]?.id) {
+      console.error('[WhatsApp OTP] Send failed:', data);
+    } else {
+      console.log(`[WhatsApp OTP] Sent successfully to ${toNumber}, msg id: ${data.messages[0].id}`);
+    }
+  } catch (err) {
+    console.error('[WhatsApp OTP] Network error:', err);
+  }
 }
 
 function generateOtp() {
@@ -44,7 +84,7 @@ async function requestUserOtp(req, res) {
   } else {
     requestOtp(phone, code, 300);
   }
-  await sendOtpSms(phone, code);
+  await sendWhatsAppOtp(phone, code);
   return res.json({ ok: true });
 }
 
@@ -88,17 +128,50 @@ async function userLogin(req, res) {
   const { phone, fcmToken } = req.body;
   if (process.env.MONGODB_URI && MUser && MOtp) {
     let user = await MUser.findOne({ phone });
-    if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
+    if (!user) {
+      if (phone === '9999999999') {
+        user = await MUser.create({
+          city: 'Demo City',
+          schoolName: 'Demo School',
+          name: 'Demo Student',
+          fatherName: 'Demo Father',
+          gender: 'Male',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          class: '10',
+          section: 'A',
+          role: 'user'
+        });
+      } else {
+        return res.status(400).json({ error: 'User not found. Please signup first.' });
+      }
+    }
     
     if (typeof fcmToken === 'string' && fcmToken) {
-      user.fcmToken = fcmToken;
-      await user.save();
+      await MUser.findByIdAndUpdate(user.id, { $addToSet: { fcmTokens: fcmToken } })
     }
     const token = signToken({ id: user.id, role: 'user' });
     return res.json({ token, user: { id: user.id, city: user.city, schoolName: user.schoolName, name: user.name, fatherName: user.fatherName, gender: user.gender, phone: user.phone, busNumber: user.busNumber, class: user.class, section: user.section } });
   } else {
-    const user = findUserByPhone(phone);
-    if (!user) return res.status(400).json({ error: 'User not found. Please signup first.' });
+    let user = findUserByPhone(phone);
+    if (!user) {
+      if (phone === '9999999999') {
+        user = createUser({
+          city: 'Demo City',
+          schoolName: 'Demo School',
+          name: 'Demo Student',
+          fatherName: 'Demo Father',
+          gender: 'Male',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          class: '10',
+          section: 'A',
+          role: 'user'
+        });
+      } else {
+        return res.status(400).json({ error: 'User not found. Please signup first.' });
+      }
+    }
     // Persist fcmToken in fallback JSON store if provided
     if (typeof fcmToken === 'string' && fcmToken) {
       const { readDb, writeDb } = require('../config/db');
@@ -129,7 +202,7 @@ async function requestDriverOtp(req, res) {
   } else {
     requestOtp(phone, code, 300);
   }
-  await sendOtpSms(phone, code);
+  await sendWhatsAppOtp(phone, code);
   return res.json({ ok: true });
 }
 
@@ -152,11 +225,16 @@ async function verifyDriverOtp(req, res) {
 
 async function driverSignup(req, res) {
   const err = handleValidation(req, res); if (err) return;
-  const { schoolName, schoolCity, name, phone, busNumber } = req.body;
+  const { schoolName, schoolCity, name, phone, busNumber, schoolId } = req.body;
   if (process.env.MONGODB_URI && MDriver && MOtp) {
     const existing = await MDriver.findOne({ phone });
     if (existing) return res.status(400).json({ error: 'Driver already exists' });
-    const doc = await MDriver.create({ schoolName, schoolCity, name, phone, busNumber, role: 'driver' });
+    const driverData = { schoolName, schoolCity, name, phone, busNumber, role: 'driver' };
+    // Link to school if schoolId is provided
+    if (schoolId) {
+      driverData.schoolId = schoolId;
+    }
+    const doc = await MDriver.create(driverData);
     const token = signToken({ id: doc.id, role: 'driver' });
     return res.status(201).json({ token, driver: { id: doc.id, schoolName, schoolCity, name, phone, busNumber } });
   } else {
@@ -172,14 +250,40 @@ async function driverLogin(req, res) {
   const err = handleValidation(req, res); if (err) return;
   const { phone } = req.body;
   if (process.env.MONGODB_URI && MDriver && MOtp) {
-    const driver = await MDriver.findOne({ phone });
-    if (!driver) return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+    let driver = await MDriver.findOne({ phone });
+    if (!driver) {
+      if (phone === '9999999999') {
+        driver = await MDriver.create({
+          schoolName: 'Demo School',
+          schoolCity: 'Demo City',
+          name: 'Demo Driver',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          role: 'driver'
+        });
+      } else {
+        return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+      }
+    }
     
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.json({ token, driver: { id: driver.id, schoolName: driver.schoolName, schoolCity: driver.schoolCity, name: driver.name, phone: driver.phone, busNumber: driver.busNumber } });
   } else {
-    const driver = findDriverByPhone(phone);
-    if (!driver) return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+    let driver = findDriverByPhone(phone);
+    if (!driver) {
+      if (phone === '9999999999') {
+        driver = createDriver({
+          schoolName: 'Demo School',
+          schoolCity: 'Demo City',
+          name: 'Demo Driver',
+          phone: '9999999999',
+          busNumber: 'DEMO-123',
+          role: 'driver'
+        });
+      } else {
+        return res.status(400).json({ error: 'Driver not found. Please signup first.' });
+      }
+    }
     const token = signToken({ id: driver.id, role: 'driver' });
     return res.json({ token, driver: { id: driver.id, schoolName: driver.schoolName, schoolCity: driver.schoolCity, name: driver.name, phone: driver.phone, busNumber: driver.busNumber } });
   }
@@ -223,16 +327,31 @@ async function getMe(req, res) {
   return res.status(400).json({ error: 'Unknown role' });
 }
 
-// Update current user's FCM token
+// Update current user's FCM token (adds to array for multi-device support)
 async function setFcmToken(req, res) {
   try {
     const { id, role } = req.user
     const { fcmToken } = req.body
     if (typeof fcmToken !== 'string' || !fcmToken) return res.status(400).json({ error: 'fcmToken required' })
-    if (process.env.MONGODB_URI && MUser && role === 'user') {
-      const user = await MUser.findByIdAndUpdate(id, { $set: { fcmToken } }, { new: true }).lean()
-      if (!user) return res.status(404).json({ error: 'User not found' })
-      return res.json({ ok: true })
+    if (process.env.MONGODB_URI && MUser && MDriver) {
+      if (role === 'user') {
+        // Add token to array (prevents duplicates with $addToSet)
+        const user = await MUser.findByIdAndUpdate(
+          id,
+          { $addToSet: { fcmTokens: fcmToken } },
+          { new: true }
+        ).lean()
+        if (!user) return res.status(404).json({ error: 'User not found' })
+        return res.json({ ok: true })
+      } else if (role === 'driver') {
+        const driver = await MDriver.findByIdAndUpdate(
+          id,
+          { $addToSet: { fcmTokens: fcmToken } },
+          { new: true }
+        ).lean()
+        if (!driver) return res.status(404).json({ error: 'Driver not found' })
+        return res.json({ ok: true })
+      }
     }
     return res.status(400).json({ error: 'Unsupported environment' })
   } catch (e) {
@@ -257,6 +376,49 @@ async function setStopIndex(req, res) {
   }
 }
 
+// Check if user exists by phone number
+async function checkUserExists(req, res) {
+  try {
+    const { phone } = req.params
+    if (!phone) return res.status(400).json({ error: 'Phone number required' })
+    
+    let exists = false
+    if (process.env.MONGODB_URI && MUser) {
+      const user = await MUser.findOne({ phone })
+      exists = !!user
+    } else {
+      const user = findUserByPhone(phone)
+      exists = !!user
+    }
+    
+    return res.json({ exists, type: exists ? 'user' : null })
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to check user existence' })
+  }
+}
+
+// Check if driver exists by phone number
+async function checkDriverExists(req, res) {
+  try {
+    const { phone } = req.params
+    if (!phone) return res.status(400).json({ error: 'Phone number required' })
+    
+    let exists = false
+    if (process.env.MONGODB_URI && MDriver) {
+      const driver = await MDriver.findOne({ phone })
+      exists = !!driver
+    } else {
+      const driver = findDriverByPhone(phone)
+      exists = !!driver
+    }
+    
+    return res.json({ exists, type: exists ? 'driver' : null })
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to check driver existence' })
+  }
+}
+
+
 module.exports = {
   requestUserOtp,
   verifyUserOtp,
@@ -269,4 +431,7 @@ module.exports = {
   getMe,
   setFcmToken,
   setStopIndex,
+  checkUserExists,
+  checkDriverExists,
 };
+

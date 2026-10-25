@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema(
   {
-    city: { type: String, required: true },
+    city: { type: String, required: false },
     schoolName: { type: String, required: true },
     schoolId: { type: mongoose.Schema.Types.ObjectId, ref: 'School' },
     name: { type: String, required: true },
@@ -13,10 +13,15 @@ const UserSchema = new mongoose.Schema(
     class: { type: String, required: true },
     section: { type: String, required: true },
     role: { type: String, default: 'user' },
-    // FCM token for push notifications
+    // FCM tokens for push notifications (multi-device support)
+    fcmTokens: [{ type: String }],
+    // Legacy single token field (kept for backward compatibility)
     fcmToken: { type: String },
     // Index of the stop along the driver's route this user belongs to
     stopIndex: { type: Number, default: 0 },
+    // Subscription status for bus tracking access
+    subscriptionStatus: { type: String, enum: ['none', 'active', 'expired'], default: 'none' },
+    subscriptionEndDate: { type: Date },
   },
   { timestamps: true }
 );

@@ -4,6 +4,7 @@ const SchoolSchema = new mongoose.Schema(
   {
     schoolName: { type: String, required: true },
     schoolAddress: { type: String, required: true },
+    district: { type: String, required: true },
     location: {
       type: { type: String, enum: ['Point'], default: 'Point' },
       coordinates: { type: [Number], required: true }, // [lng, lat]
@@ -12,6 +13,7 @@ const SchoolSchema = new mongoose.Schema(
     phone: { type: String, required: true, unique: true, index: true },
     passwordHash: { type: String, required: true },
     role: { type: String, default: 'school' },
+    agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
   },
   { timestamps: true }
 );

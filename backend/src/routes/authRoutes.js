@@ -12,6 +12,8 @@ const {
   getMe,
   setFcmToken,
   setStopIndex,
+  checkUserExists,
+  checkDriverExists,
 } = require('../controllers/authController');
 const {
   userSignupValidator,
@@ -42,6 +44,7 @@ router.post('/user/otp/request', otpRequestValidator, requestUserOtp);
 router.post('/user/otp/verify', otpVerifyValidator, verifyUserOtp);
 
 // User auth
+router.get('/user/check/:phone', checkUserExists);
 router.post('/user/signup', userSignupValidator, userSignup);
 router.post('/user/login', userLoginValidator, userLogin);
 
@@ -50,6 +53,7 @@ router.post('/driver/otp/request', otpRequestValidator, requestDriverOtp);
 router.post('/driver/otp/verify', otpVerifyValidator, verifyDriverOtp);
 
 // Driver auth
+router.get('/driver/check/:phone', checkDriverExists);
 router.post('/driver/signup', driverSignupValidator, driverSignup);
 router.post('/driver/login', driverLoginValidator, driverLogin);
 
@@ -60,6 +64,14 @@ router.get('/me', auth(), getMe);
 router.post(
   '/user/fcm',
   auth('user'),
+  validate([body('fcmToken').isString().notEmpty()]),
+  setFcmToken
+);
+
+// Driver: set FCM token for notifications
+router.post(
+  '/driver/fcm',
+  auth('driver'),
   validate([body('fcmToken').isString().notEmpty()]),
   setFcmToken
 );

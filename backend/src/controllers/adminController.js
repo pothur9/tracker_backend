@@ -17,6 +17,14 @@ let MUser;
 try {
   MUser = require('../models/mongoose/User');
 } catch {}
+let MDriver;
+try {
+  MDriver = require('../models/mongoose/Driver');
+} catch {}
+let MLocation;
+try {
+  MLocation = require('../models/mongoose/Location');
+} catch {}
 
 // Admin login using env credentials
 async function adminLogin(req, res) {
@@ -34,7 +42,7 @@ async function adminLogin(req, res) {
 async function adminCreateSchool(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { schoolName, schoolAddress, coordinates, phone, password, logoUrl } = req.body;
+  const { schoolName, schoolAddress, district, coordinates, phone, password, logoUrl, agentId } = req.body;
 
   if (process.env.MONGODB_URI && MSchool) {
     const existing = await MSchool.findOne({ phone });
@@ -43,11 +51,13 @@ async function adminCreateSchool(req, res) {
     const doc = await MSchool.create({
       schoolName,
       schoolAddress,
+      district,
       location: coordinates ? { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] } : undefined,
       logoUrl,
       phone,
       passwordHash,
       role: 'school',
+      agentId: agentId || undefined,
     });
     return res.status(201).json({
       id: String(doc._id),
@@ -56,6 +66,7 @@ async function adminCreateSchool(req, res) {
       coordinates: coordinates || (doc.location ? { lat: doc.location.coordinates[1], lng: doc.location.coordinates[0] } : undefined),
       logoUrl: doc.logoUrl,
       phone: doc.phone,
+      agentId: doc.agentId ? String(doc.agentId) : null,
     });
   } else {
     const existing = findSchoolByPhone(phone);
@@ -75,23 +86,30 @@ async function adminCreateSchool(req, res) {
 
 // Admin: list all schools
 async function adminListSchools(req, res) {
+  const { district } = req.query; // Support filtering by district
+  
   if (process.env.MONGODB_URI && MSchool) {
-    const docs = await MSchool.find({}, 'schoolName schoolAddress location logoUrl phone').lean();
+    const query = district ? { district } : {};
+    const docs = await MSchool.find(query, 'schoolName schoolAddress district location logoUrl phone agentId').populate('agentId', 'name phone').lean();
     return res.json(
       docs.map((d) => ({
         id: String(d._id),
         schoolName: d.schoolName,
         schoolAddress: d.schoolAddress,
+        district: d.district,
         coordinates: d.location && Array.isArray(d.location.coordinates)
           ? { lat: d.location.coordinates[1], lng: d.location.coordinates[0] }
           : undefined,
         logoUrl: d.logoUrl,
         phone: d.phone,
+        agentId: d.agentId ? String(d.agentId._id || d.agentId) : null,
+        agent: d.agentId && d.agentId.name ? { id: String(d.agentId._id), name: d.agentId.name, phone: d.agentId.phone } : null,
       }))
     );
   } else {
     const list = listSchoolsModel();
-    return res.json(list.map((s) => ({ id: s.id, schoolName: s.schoolName, schoolAddress: s.schoolAddress, coordinates: s.coordinates, logoUrl: s.logoUrl, phone: s.phone })));
+    const filtered = district ? list.filter(s => s.district === district) : list;
+    return res.json(filtered.map((s) => ({ id: s.id, schoolName: s.schoolName, schoolAddress: s.schoolAddress, district: s.district, coordinates: s.coordinates, logoUrl: s.logoUrl, phone: s.phone })));
   }
 }
 
@@ -145,7 +163,7 @@ async function adminListSchoolsFull(req, res) {
 async function adminUpdateSchool(req, res) {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'id required' });
-  const { schoolName, schoolAddress, coordinates, logoUrl } = req.body || {};
+  const { schoolName, schoolAddress, district, coordinates, logoUrl, agentId } = req.body || {};
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'phone')) {
     return res.status(400).json({ error: 'phone cannot be updated' });
   }
@@ -154,7 +172,9 @@ async function adminUpdateSchool(req, res) {
     const update = {};
     if (typeof schoolName === 'string') update.schoolName = schoolName;
     if (typeof schoolAddress === 'string') update.schoolAddress = schoolAddress;
+    if (typeof district === 'string') update.district = district;
     if (logoUrl !== undefined) update.logoUrl = logoUrl;
+    if (agentId !== undefined) update.agentId = agentId || null;
     if (coordinates && typeof coordinates.lat === 'number' && typeof coordinates.lng === 'number') {
       update.location = { type: 'Point', coordinates: [coordinates.lng, coordinates.lat] };
     }
@@ -164,11 +184,13 @@ async function adminUpdateSchool(req, res) {
       id: String(doc._id),
       schoolName: doc.schoolName,
       schoolAddress: doc.schoolAddress,
+      district: doc.district,
       coordinates: doc.location && Array.isArray(doc.location.coordinates)
         ? { lat: doc.location.coordinates[1], lng: doc.location.coordinates[0] }
         : undefined,
       logoUrl: doc.logoUrl,
       phone: doc.phone,
+      agentId: doc.agentId ? String(doc.agentId) : null,
       updatedAt: doc.updatedAt,
     });
   } else {
@@ -213,4 +235,98 @@ async function adminCountStudentsByBus(req, res) {
   }
 }
 
-module.exports = { adminLogin, adminCreateSchool, adminListSchools, adminDeleteSchool, adminListSchoolsFull, adminUpdateSchool, adminCountStudentsByBus };
+// Admin: get all driver locations for a particular school
+async function adminGetSchoolDriverLocations(req, res) {
+  const { schoolId } = req.params;
+  if (!schoolId) return res.status(400).json({ error: 'schoolId required' });
+
+  if (process.env.MONGODB_URI && MDriver && MLocation) {
+    try {
+      // Find all drivers for this school
+      const drivers = await MDriver.find({ schoolId }).lean();
+      
+      if (!drivers || drivers.length === 0) {
+        return res.json({ schoolId, drivers: [] });
+      }
+
+      // Get latest location for each driver
+      const driverLocations = await Promise.all(
+        drivers.map(async (driver) => {
+          const location = await MLocation.findOne({ driverId: String(driver._id) })
+            .sort({ updatedAtIso: -1 })
+            .lean();
+
+          return {
+            driverId: String(driver._id),
+            name: driver.name,
+            phone: driver.phone,
+            busNumber: driver.busNumber,
+            isSharingLocation: driver.isSharingLocation,
+            currentStopIndex: driver.currentStopIndex,
+            stops: driver.stops || [],
+            location: location ? {
+              lat: location.lat,
+              lng: location.lng,
+              updatedAt: location.updatedAtIso,
+            } : null,
+          };
+        })
+      );
+
+      // Fetch school location
+      const school = await MSchool.findById(schoolId).lean();
+      const schoolLocation = school && school.location && Array.isArray(school.location.coordinates)
+        ? { lat: school.location.coordinates[1], lng: school.location.coordinates[0] }
+        : null;
+
+      return res.json({
+        schoolId,
+        schoolLocation,
+        drivers: driverLocations,
+      });
+    } catch (error) {
+      console.error('[adminGetSchoolDriverLocations] Error:', error);
+      return res.status(500).json({ error: 'Failed to fetch driver locations' });
+    }
+  } else {
+    // Fallback for non-MongoDB setup
+    const { readDb } = require('../config/db');
+    const db = readDb();
+    const drivers = (db.drivers || []).filter((d) => String(d.schoolId) === String(schoolId));
+    
+    const driverLocations = drivers.map((driver) => {
+      const location = (db.locations || [])
+        .filter((loc) => String(loc.driverId) === String(driver.id))
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+
+      return {
+        driverId: driver.id,
+        name: driver.name,
+        phone: driver.phone,
+        busNumber: driver.busNumber,
+        isSharingLocation: driver.isSharingLocation,
+        currentStopIndex: driver.currentStopIndex,
+        stops: driver.stops || [],
+        location: location ? {
+          lat: location.lat,
+          lng: location.lng,
+          updatedAt: location.updatedAt,
+        } : null,
+      };
+    });
+
+      // Fetch school location from fallback DB
+      const school = (db.schools || []).find(s => String(s.id) === String(schoolId));
+      const schoolLocation = school && school.coordinates
+        ? { lat: school.coordinates.lat, lng: school.coordinates.lng }
+        : null;
+
+      return res.json({
+        schoolId,
+        schoolLocation,
+        drivers: driverLocations,
+      });
+  }
+}
+
+module.exports = { adminLogin, adminCreateSchool, adminListSchools, adminDeleteSchool, adminListSchoolsFull, adminUpdateSchool, adminCountStudentsByBus, adminGetSchoolDriverLocations };

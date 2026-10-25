@@ -12,6 +12,17 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Disable caching for all API responses
+app.use((req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store',
+  });
+  next();
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });

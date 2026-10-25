@@ -6,6 +6,7 @@ const passwordRule = body('password').isString().isLength({ min: 6 }).withMessag
 const schoolSignupValidator = [
   body('schoolName').isString().notEmpty(),
   body('schoolAddress').isString().notEmpty(),
+  body('district').isString().notEmpty(),
   body('coordinates').isObject(),
   body('coordinates.lat').isFloat({ min: -90, max: 90 }),
   body('coordinates.lng').isFloat({ min: -180, max: 180 }),
